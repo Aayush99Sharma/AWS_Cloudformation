@@ -1,0 +1,133 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Create RDS MySQL database instance with EC2 connectivity",
+  "Parameters": {
+    "Subnet1": {
+      "Type": "AWS::EC2::Subnet::Id",
+      "Description": "ID of the first subnet for the DB instance"
+    },
+    "Subnet2": {
+      "Type": "AWS::EC2::Subnet::Id",
+      "Description": "ID of the second subnet for the DB instance"
+    },
+    "SecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup::Id",
+      "Description": "Security Group ID for RDS instance"
+    },
+    "DBInstanceIdentifier": {
+      "Type": "String",
+      "Description": "Unique identifier for the DB instance",
+      "Default": "my-rds-instance"
+    },
+    "AllocatedStorage": {
+      "Type": "Number",
+      "Description": "The size of the database (in GB)",
+      "Default": 20
+    },
+    "DBInstanceClass": {
+      "Type": "String",
+      "Description": "The compute and memory capacity of the DB instance",
+      "Default": "db.t3.micro"
+    },
+    "EngineVersion": {
+      "Type": "String",
+      "Description": "The version of the MySQL engine to use",
+      "Default": "8.0.39"
+    },
+    "MasterUsername": {
+      "Type": "String",
+      "Description": "Master username for the RDS instance",
+      "Default": "admin"
+    },
+    "MasterUserPassword": {
+      "Type": "String",
+      "Description": "Master password for the RDS instance",
+      "NoEcho": true
+    },
+    "MultiAZ": {
+      "Type": "String",
+      "Description": "Whether to create a Multi-AZ DB instance",
+      "Default": "false",
+      "AllowedValues": ["true", "false"]
+    },
+    "AvailabilityZone": {
+      "Type": "String",
+      "Description": "The Availability Zone for the RDS instance",
+      "Default": "us-west-2a"
+    }
+  },
+  "Resources": {
+    "DBSubnetGroup": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "My RDS Subnet Group",
+        "SubnetIds": [
+          {
+            "Ref": "Subnet1"
+          },
+          {
+            "Ref": "Subnet2"
+          }
+        ]
+      }
+    },
+    "RDSInstance": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "DBInstanceIdentifier": {
+          "Ref": "DBInstanceIdentifier"
+        },
+        "AllocatedStorage": {
+          "Ref": "AllocatedStorage"
+        },
+        "DBInstanceClass": {
+          "Ref": "DBInstanceClass"
+        },
+        "Engine": "mysql",
+        "EngineVersion": {
+          "Ref": "EngineVersion"
+        },
+        "MasterUsername": {
+          "Ref": "MasterUsername"
+        },
+        "MasterUserPassword": {
+          "Ref": "MasterUserPassword"
+        },
+        "DBSubnetGroupName": {
+          "Ref": "DBSubnetGroup"
+        },
+        "VPCSecurityGroups": [
+          {
+            "Ref": "SecurityGroup"
+          }
+        ],
+        "MultiAZ": {
+          "Ref": "MultiAZ"
+        },
+        "AvailabilityZone": {
+          "Ref": "AvailabilityZone"
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "RDSInstanceEndpoint": {
+      "Description": "The endpoint of the RDS instance",
+      "Value": {
+        "Fn::GetAtt": [
+          "RDSInstance",
+          "Endpoint.Address"
+        ]
+      }
+    },
+    "RDSInstancePort": {
+      "Description": "The port of the RDS instance",
+      "Value": {
+        "Fn::GetAtt": [
+          "RDSInstance",
+          "Endpoint.Port"
+        ]
+      }
+    }
+  }
+}

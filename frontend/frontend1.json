@@ -1,0 +1,76 @@
+
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Clone frontend EC2 instance for Nginx or static content serving",
+    "Parameters": {
+      "VpcId": {
+        "Type": "String",
+        "Description": "VPC ID"
+      },
+      "PublicSubnetId": {
+        "Type": "String",
+        "Description": "Public Subnet ID for the EC2 instance"
+      },
+      "InstanceType": {
+        "Type": "String",
+        "Default": "t3.micro",
+        "Description": "EC2 instance type"
+      },
+      "AMIId": {
+        "Type": "String",
+        "Description": "AMI ID for the frontend EC2 instance",
+        "Default": "ami-09bdb86affa2d4845"  
+      },
+      "KeyName": {
+        "Type": "String",
+        "Description": "Key Pair name for SSH access"
+      },
+      "SecurityGroupId": {
+        "Type": "String",
+        "Description": "Security Group for the frontend instance",
+        "Default": "sg-0bcefcec0b6e43e1c"  
+      }
+    },
+    "Resources": {
+      "FrontendInstance": {
+        "Type": "AWS::EC2::Instance",
+        "Properties": {
+          "InstanceType": {
+            "Ref": "InstanceType"
+          },
+          "ImageId": {
+            "Ref": "AMIId"
+          },
+          "SecurityGroupIds": [
+            {
+              "Ref": "SecurityGroupId"
+            }
+          ],
+          "SubnetId": {
+            "Ref": "PublicSubnetId"
+          },
+          "KeyName": {
+            "Ref": "KeyName"
+          },
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "Frontend-Instance"
+            }
+          ]
+        }
+      }
+    },
+    "Outputs": {
+      "FrontendInstancePublicIP": {
+        "Description": "Public IP of the cloned frontend EC2 instance",
+        "Value": {
+          "Fn::GetAtt": [
+            "FrontendInstance",
+            "PublicIp"
+          ]
+        }
+      }
+    }
+  }
+  

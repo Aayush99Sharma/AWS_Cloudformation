@@ -1,0 +1,826 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Networking resources and backend EC2 instance for Django application in a single template.",
+    "Parameters": {
+      "Region": {
+        "Description": "AWS Region where resources will be created.",
+        "Type": "String",
+        "Default": "us-west-2",
+        "AllowedValues": [
+          "eu-central-1",
+          "us-west-2"
+        ],
+        "ConstraintDescription": "Must be the eu-central-1 or us-west-2 region."
+      },
+      "AZ1": {
+        "Description": "First Availability Zone in the region.",
+        "Type": "String",
+        "Default": "us-west-2a"
+      },
+      "AZ2": {
+        "Description": "Second Availability Zone in the region.",
+        "Type": "String",
+        "Default": "us-west-2b"
+      },
+      "VPCCidr": {
+        "Description": "CIDR block for the VPC.",
+        "Type": "String",
+        "Default": "10.0.0.0/16",
+        "ConstraintDescription": "Must be a valid CIDR block."
+      },
+      "PublicSubnet1Cidr": {
+        "Description": "CIDR block for Public Subnet 1.",
+        "Type": "String",
+        "Default": "10.0.1.0/24"
+      },
+      "PublicSubnet2Cidr": {
+        "Description": "CIDR block for Public Subnet 2.",
+        "Type": "String",
+        "Default": "10.0.2.0/24"
+      },
+      "PrivateSubnet1Cidr": {
+        "Description": "CIDR block for Private Subnet 1.",
+        "Type": "String",
+        "Default": "10.0.3.0/24"
+      },
+      "PrivateSubnet2Cidr": {
+        "Description": "CIDR block for Private Subnet 2.",
+        "Type": "String",
+        "Default": "10.0.4.0/24"
+      },
+      "InstanceType": {
+        "Type": "String",
+        "Default": "t3.micro",
+        "Description": "EC2 instance type"
+      },
+      "FrontendAMIId": {
+        "Type": "String",
+        "Description": "AMI ID for the frontend EC2 instance",
+        "Default": "ami-0c779fe4d45aced3d"  
+      },
+      "BackendAMIId": {
+        "Type": "String",
+        "Description": "AMI ID for the backend EC2 instance",
+        "Default": "ami-0da0f80017e7288a9"
+      },
+      "KeyName": {
+        "Type": "String",
+        "Description": "Key Pair name for SSH access"
+      },
+      "DBInstanceIdentifier": {
+        "Type": "String",
+        "Description": "Unique identifier for the DB instance",
+        "Default": "database-cli"
+      },
+      "DBAllocatedStorage": {
+        "Type": "Number",
+        "Description": "The size of the database (in GB)",
+        "Default": 20
+      },
+      "DBInstanceClass": {
+        "Type": "String",
+        "Description": "The compute and memory capacity of the DB instance",
+        "Default": "db.t3.micro"
+      },
+      "EngineVersion": {
+        "Type": "String",
+        "Description": "The version of the MySQL engine to use",
+        "Default": "8.0.39"
+      },
+      "MasterUsername": {
+        "Type": "String",
+        "Description": "Master username for the RDS instance",
+        "Default": "admin"
+      },
+      "MasterUserPassword": {
+        "Type": "String",
+        "Description": "Master password for the RDS instance",
+        "NoEcho": true
+      },
+      "MultiAZ": {
+        "Type": "String",
+        "Description": "Whether to create a Multi-AZ DB instance",
+        "Default": "false",
+        "AllowedValues": ["true", "false"]
+      },
+      "AvailabilityZone": {
+        "Type": "String",
+        "Description": "The Availability Zone for the RDS instance",
+        "Default": "us-west-2a"
+      },
+      "DBName": {
+      "Type": "String",
+      "Description": "The name of the database to create",
+      "Default": "rdsdb"
+    }
+    
+    },
+
+    
+    "Resources": {
+      "VPC": {
+        "Type": "AWS::EC2::VPC",
+        "Properties": {
+          "CidrBlock": { "Ref": "VPCCidr" },
+          "EnableDnsSupport": true,
+          "EnableDnsHostnames": true,
+          "Tags": [
+            { "Key": "Name", "Value": "ThreeTierVPC" }
+          ]
+        }
+      },
+      "InternetGateway": {
+        "Type": "AWS::EC2::InternetGateway",
+        "Properties": {
+          "Tags": [
+            { "Key": "Name", "Value": "ThreeTierIGW" }
+          ]
+        }
+      },
+      "AttachIGW": {
+        "Type": "AWS::EC2::VPCGatewayAttachment",
+        "Properties": {
+          "VpcId": { "Ref": "VPC" },
+          "InternetGatewayId": { "Ref": "InternetGateway" }
+        }
+      },
+      "PublicRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": { "Ref": "VPC" },
+        "Tags": [
+          { "Key": "Name", "Value": "PublicRouteTable" }
+        ]
+      }
+    },
+    "PublicRoute": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "RouteTableId": { "Ref": "PublicRouteTable" },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": { "Ref": "InternetGateway" }
+      }
+    },
+    "PublicSubnet1Association": {
+        "Type": "AWS::EC2::SubnetRouteTableAssociation",
+        "Properties": {
+          "SubnetId": { "Ref": "PublicSubnet1" },
+          "RouteTableId": { "Ref": "PublicRouteTable" }
+        }
+      },
+      "PublicSubnet2Association": {
+        "Type": "AWS::EC2::SubnetRouteTableAssociation",
+        "Properties": {
+          "SubnetId": { "Ref": "PublicSubnet2" },
+          "RouteTableId": { "Ref": "PublicRouteTable" }
+        }
+      },
+      "PrivateRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": { "Ref": "VPC" },
+        "Tags": [
+          { "Key": "Name", "Value": "PrivateRouteTable" }
+        ]
+      }
+    },
+    "PrivateRoute": {
+        "Type": "AWS::EC2::Route",
+        "Properties": {
+          "RouteTableId": { "Ref": "PrivateRouteTable" },
+          "DestinationCidrBlock": "0.0.0.0/0",
+          "NatGatewayId": { "Ref": "NATGateway" }
+        }
+      },
+    "PrivateSubnet1Association": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": { "Ref": "PrivateSubnet1" },
+        "RouteTableId": { "Ref": "PrivateRouteTable" }
+      }
+    },
+    "PrivateSubnet2Association": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": { "Ref": "PrivateSubnet2" },
+        "RouteTableId": { "Ref": "PrivateRouteTable" }
+      }
+    },
+      "PublicSubnet1": {
+        "Type": "AWS::EC2::Subnet",
+        "Properties": {
+          "VpcId": { "Ref": "VPC" },
+          "CidrBlock": { "Ref": "PublicSubnet1Cidr" },
+          "AvailabilityZone": { "Ref": "AZ1" },
+          "MapPublicIpOnLaunch": true,
+          "Tags": [
+            { "Key": "Name", "Value": "PublicSubnet1" }
+          ]
+        }
+      },
+      "PublicSubnet2": {
+        "Type": "AWS::EC2::Subnet",
+        "Properties": {
+          "VpcId": { "Ref": "VPC" },
+          "CidrBlock": { "Ref": "PublicSubnet2Cidr" },
+          "AvailabilityZone": { "Ref": "AZ2" },
+          "MapPublicIpOnLaunch": true,
+          "Tags": [
+            { "Key": "Name", "Value": "PublicSubnet2" }
+          ]
+        }
+      },
+      "PrivateSubnet1": {
+        "Type": "AWS::EC2::Subnet",
+        "Properties": {
+          "VpcId": { "Ref": "VPC" },
+          "CidrBlock": { "Ref": "PrivateSubnet1Cidr" },
+          "AvailabilityZone": { "Ref": "AZ1" },
+          "MapPublicIpOnLaunch": false,
+          "Tags": [
+            { "Key": "Name", "Value": "PrivateSubnet1" }
+          ]
+        }
+      },
+      "PrivateSubnet2": {
+        "Type": "AWS::EC2::Subnet",
+        "Properties": {
+          "VpcId": { "Ref": "VPC" },
+          "CidrBlock": { "Ref": "PrivateSubnet2Cidr" },
+          "AvailabilityZone": { "Ref": "AZ2" },
+          "MapPublicIpOnLaunch": false,
+          "Tags": [
+            { "Key": "Name", "Value": "PrivateSubnet2" }
+          ]
+        }
+      },
+      
+      "ElasticIP": {
+        "Type": "AWS::EC2::EIP",
+        "Properties": {
+          "Domain": "vpc"
+        }
+      },
+      "NATGateway": {
+        "Type": "AWS::EC2::NatGateway",
+        "Properties": {
+          "SubnetId": { "Ref": "PublicSubnet1" },
+          "AllocationId": { "Fn::GetAtt": ["ElasticIP", "AllocationId"] }
+        }
+      },
+
+      "DatabaseSecurityGroup": {
+    "Type": "AWS::EC2::SecurityGroup",
+    "Properties": {
+        "GroupDescription": "Security group for database",
+        "VpcId": { "Ref": "VPC" },
+        "SecurityGroupIngress": [
+            {
+                "IpProtocol": "tcp",
+                "FromPort": 3306,
+                "ToPort": 3306,
+                "CidrIp": "0.0.0.0/0"
+            }
+        ],
+        "SecurityGroupEgress": [
+            {
+                "IpProtocol": "-1",
+                "FromPort": 0,
+                "ToPort": 0,
+                "CidrIp": "0.0.0.0/0"
+            }
+        ],
+        "Tags": [
+            { "Key": "Name", "Value": "DatabaseSecurityGroup" }
+        ]
+    }
+},
+
+      "BackendSecurityGroup": {
+        "Type": "AWS::EC2::SecurityGroup",
+        "Properties": {
+          "GroupDescription": "Security group for backend instance",
+          "VpcId": { "Ref": "VPC" },
+          "SecurityGroupIngress": [
+    {
+        "IpProtocol": "tcp",
+        "FromPort": 22,
+        "ToPort": 22,
+        "CidrIp": "0.0.0.0/0"
+    },
+    {
+        "IpProtocol": "tcp",
+        "FromPort": 80,
+        "ToPort": 80,
+        "CidrIp": "0.0.0.0/0"
+    },
+    {
+        "IpProtocol": "tcp",
+        "FromPort": 3306,
+        "ToPort": 3306,
+        "CidrIp": "0.0.0.0/0"
+    },
+    {
+        "IpProtocol": "tcp",
+        "FromPort": 8000,
+        "ToPort": 8000,
+        "CidrIp": "0.0.0.0/0"
+    }
+],
+ "SecurityGroupEgress": [
+    {
+        "IpProtocol": "-1",
+        "FromPort": 0,
+        "ToPort": 0,
+        "CidrIp": "0.0.0.0/0"
+    },
+    {
+        "IpProtocol": "-1",
+        "FromPort": 0,
+        "ToPort": 0,
+        "CidrIp": "0.0.0.0/0"
+    },
+    {
+        "IpProtocol": "tcp",
+        "FromPort": 80,
+        "ToPort": 80,
+        "CidrIp": "0.0.0.0/0"
+    }
+  ],
+          "Tags": [
+            { "Key": "Name", "Value": "BackendSecurityGroup" }
+          ]
+        }
+      },
+
+      "BackendInstance": {
+        "Type": "AWS::EC2::Instance",
+        "Properties": {
+          "InstanceType": { "Ref": "InstanceType" },
+          "ImageId": { "Ref": "BackendAMIId" },
+          "SecurityGroupIds": [
+            { "Ref": "BackendSecurityGroup" }
+          ],
+          "SubnetId": { "Ref": "PrivateSubnet1" },
+          "KeyName": { "Ref": "KeyName" },
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "Backend-Django-Clone"
+            }
+          ]
+        }
+      },
+
+    "FrontendLoadBalancerSecurityGroup": {
+    "Type": "AWS::EC2::SecurityGroup",
+    "Properties": {
+        "GroupDescription": "Security group for frontend load balancer",
+        "VpcId": { "Ref": "VPC" },
+        "SecurityGroupIngress": [
+            {
+              "IpProtocol": "tcp",
+              "FromPort": 80,
+              "ToPort": 80,
+              "SourceSecurityGroupId": { "Ref": "FrontendSecurityGroup" }
+            },
+            {
+              "IpProtocol": "tcp",
+              "FromPort": 8000,
+              "ToPort": 8000,
+              "CidrIp": "0.0.0.0/0"
+            },
+            {
+              "IpProtocol": "tcp",
+              "FromPort": 80,
+              "ToPort": 80,
+              "CidrIp": "0.0.0.0/0"
+            }
+          ],
+          "SecurityGroupEgress": [
+            {
+              "IpProtocol": "-1",
+              "CidrIp": "0.0.0.0/0"
+            },
+            {
+              "IpProtocol": "tcp",
+              "FromPort": 80,
+              "ToPort": 80,
+              "CidrIp": "0.0.0.0/0"
+            }
+          ],
+        "Tags": [
+            { "Key": "Name", "Value": "FrontendLoadBalancerSecurityGroup" }
+        ]
+    }
+},
+"BackendLoadBalancerSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Security group for Backend Load Balancer",
+        "VpcId": { "Ref": "VPC" },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 8000,
+            "ToPort": 8000,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "-1",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "BackendLoadBalancerSecurityGroup"
+          }
+        ]
+      }
+    
+  },
+      "FrontendSecurityGroup": {
+    "Type": "AWS::EC2::SecurityGroup",
+    "Properties": {
+        "GroupDescription": "Security group for frontend instance",
+        "VpcId": { "Ref": "VPC" },
+        "SecurityGroupIngress": [
+            {
+                "IpProtocol": "tcp",
+                "FromPort": 80,
+                "ToPort": 80,
+                "CidrIp": "0.0.0.0/0"
+            },
+            {
+                "IpProtocol": "tcp",
+                "FromPort": 80,
+                "ToPort": 80,
+                "CidrIp": "0.0.0.0/0"
+            },
+            {
+                "IpProtocol": "tcp",
+                "FromPort": 8000,
+                "ToPort": 8000,
+                "CidrIp": "0.0.0.0/0"
+            },
+            {
+                "IpProtocol": "tcp",
+                "FromPort": 22,
+                "ToPort": 22,
+                "CidrIp": "0.0.0.0/0"
+            }
+        ],
+        "SecurityGroupEgress": [
+            {
+                "IpProtocol": "-1",
+                "FromPort": 0,
+                "ToPort": 0,
+                "CidrIp": "0.0.0.0/0"
+            },
+            {
+                "IpProtocol": "tcp",
+                "FromPort": 8000,
+                "ToPort": 8000,
+                "CidrIp": "0.0.0.0/0"
+            }
+        ],
+        "Tags": [
+            { "Key": "Name", "Value": "FrontendSecurityGroup" }
+        ]
+    }
+},
+      "FrontendInstance": {
+        "Type": "AWS::EC2::Instance",
+        "Properties": {
+          "InstanceType": {
+            "Ref": "InstanceType"
+          },
+          "ImageId": {
+            "Ref": "FrontendAMIId"
+          },
+          "SecurityGroupIds": [
+            {
+              "Ref": "FrontendSecurityGroup"
+            }
+          ],
+          "SubnetId": {
+            "Ref": "PublicSubnet1"
+          },
+          "KeyName": {
+            "Ref": "KeyName"
+          },
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "Frontend-Instance"
+            }
+          ]
+        }
+      },
+      "DBSubnetGroup": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "My RDS Subnet Group",
+        "SubnetIds": [
+          {
+            "Ref": "PrivateSubnet1"
+          },
+          {
+            "Ref": "PrivateSubnet2"
+          }
+        ]
+      }
+    },
+    "RDSInstance": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "DBInstanceIdentifier": {
+          "Ref": "DBInstanceIdentifier"
+        },
+        "AllocatedStorage": {
+          "Ref": "DBAllocatedStorage"
+        },
+        "DBInstanceClass": {
+          "Ref": "DBInstanceClass"
+        },
+        "Engine": "mysql",
+        "EngineVersion": {
+          "Ref": "EngineVersion"
+        },
+        "MasterUsername": {
+          "Ref": "MasterUsername"
+        },
+        "MasterUserPassword": {
+          "Ref": "MasterUserPassword"
+        },
+        "DBSubnetGroupName": {
+          "Ref": "DBSubnetGroup"
+        },
+        "VPCSecurityGroups": [
+          {
+            "Ref": "DatabaseSecurityGroup"
+          }
+        ],
+        "MultiAZ": {
+          "Ref": "MultiAZ"
+        },
+        "AvailabilityZone": {
+          "Ref": "AvailabilityZone"
+        },
+        "DBName": {
+            "Ref": "DBName"
+          }
+      }
+    },
+    "FrontendLaunchTemplate": {
+      "Type": "AWS::EC2::LaunchTemplate",
+      "Properties": {
+        "LaunchTemplateName": "FrontendLaunchTemplate",
+        "LaunchTemplateData": {
+          "ImageId": { "Ref": "FrontendAMIId" },
+          "InstanceType": "t3.micro",
+          "KeyName": { "Ref": "KeyName" },
+          "NetworkInterfaces": [
+            {
+              "AssociatePublicIpAddress": true,
+              "DeviceIndex": 0,
+              "Groups": [{ "Ref": "FrontendSecurityGroup" }]
+            }
+          ]
+        }
+      }
+    },
+    "BackendLaunchTemplate": {
+      "Type": "AWS::EC2::LaunchTemplate",
+      "Properties": {
+        "LaunchTemplateName": "BackendLaunchTemplate",
+        "LaunchTemplateData": {
+          "ImageId": { "Ref": "BackendAMIId" },
+          "InstanceType": "t3.micro",
+          "KeyName": { "Ref": "KeyName" },
+          "NetworkInterfaces": [
+            {
+              "AssociatePublicIpAddress": false,
+              "DeviceIndex": 0,
+              "Groups": [{ "Ref": "BackendSecurityGroup" }]
+            }
+          ]
+        }
+      }
+    },
+    "FrontendTargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": "FrontendTargetGroup",
+        "Protocol": "HTTP",
+        "Port": 80,
+        "VpcId": { "Ref": "VPC" },
+        "TargetType": "instance",
+        "HealthCheckIntervalSeconds": 30,
+        "HealthCheckPath": "/"
+      }
+    },
+    "BackendTargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": "BackendTargetGroup",
+        "Protocol": "HTTP",
+        "Port": 8000,
+        "VpcId": { "Ref": "VPC" },
+        "TargetType": "instance",
+        "HealthCheckIntervalSeconds": 30,
+        "HealthCheckPath": "/"
+      }
+    },
+    "FrontendLoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Name": "FrontendALB",
+        "Subnets": [
+          { "Ref": "PublicSubnet1" },
+          { "Ref": "PublicSubnet2" }
+        ],
+        "SecurityGroups": [{ "Ref": "FrontendLoadBalancerSecurityGroup" }],
+        "LoadBalancerAttributes": [
+          {
+            "Key": "idle_timeout.timeout_seconds",
+            "Value": "60"
+          }
+        ],
+        "Scheme": "internet-facing",
+        "Type": "application"
+      }
+    },
+    "BackendLoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Name": "BackendALB",
+        "Subnets": [
+          { "Ref": "PrivateSubnet1" },
+          { "Ref": "PrivateSubnet2" }
+        ],
+        "SecurityGroups": [{ "Ref": "BackendLoadBalancerSecurityGroup" }],
+        "LoadBalancerAttributes": [
+          {
+            "Key": "idle_timeout.timeout_seconds",
+            "Value": "60"
+          }
+        ],
+        "Scheme": "internal",
+        "Type": "application"
+      }
+    },
+   "FrontendLoadBalancerListener": {
+  "Type": "AWS::ElasticLoadBalancingV2::Listener",
+  "Properties": {
+    "DefaultActions": [
+      {
+        "Type": "forward",
+        "TargetGroupArn": { "Ref": "FrontendTargetGroup" }
+      }
+    ],
+    "LoadBalancerArn": { "Ref": "FrontendLoadBalancer" },
+    "Port": 80,
+    "Protocol": "HTTP"
+  },
+  "DependsOn": "FrontendLoadBalancer"
+},
+    "BackendLoadBalancerListener": {
+  "Type": "AWS::ElasticLoadBalancingV2::Listener",
+  "Properties": {
+    "DefaultActions": [
+      {
+        "Type": "forward",
+        "TargetGroupArn": { "Ref": "BackendTargetGroup" }
+      }
+    ],
+    "LoadBalancerArn": { "Ref": "BackendLoadBalancer" },
+    "Port": 8000,
+    "Protocol": "HTTP"
+  },
+  "DependsOn": "BackendLoadBalancer"
+},
+    "FrontendASG": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AutoScalingGroupName": "FrontendASG",
+        "LaunchTemplate": {
+          "LaunchTemplateId": { "Ref": "FrontendLaunchTemplate" },
+          "Version": "1"
+        },
+        "MinSize": "1",
+        "MaxSize": "3",
+        "DesiredCapacity": "1",
+        "VPCZoneIdentifier": [
+          { "Ref": "PublicSubnet1" },
+          { "Ref": "PublicSubnet2" }
+        ],
+        "TargetGroupARNs": [{ "Ref": "FrontendTargetGroup" }],
+        "HealthCheckType": "ELB",
+        "HealthCheckGracePeriod": 300
+      }
+    },
+    "BackendASG": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AutoScalingGroupName": "BackendASG",
+        "LaunchTemplate": {
+          "LaunchTemplateId": { "Ref": "BackendLaunchTemplate" },
+          "Version": "1"
+        },
+        "MinSize": "1",
+        "MaxSize": "3",
+        "DesiredCapacity": "1",
+        "VPCZoneIdentifier": [
+          { "Ref": "PrivateSubnet1" },
+          { "Ref": "PrivateSubnet2" }
+        ],
+        "TargetGroupARNs": [{ "Ref": "BackendTargetGroup" }],
+        "HealthCheckType": "ELB",
+        "HealthCheckGracePeriod": 300
+      }
+    },
+    "FrontendScalingPolicy": {
+      "Type": "AWS::AutoScaling::ScalingPolicy",
+      "Properties": {
+        "AutoScalingGroupName": { "Ref": "FrontendASG" },
+        "PolicyType": "TargetTrackingScaling",
+        "TargetTrackingConfiguration": {
+          "PredefinedMetricSpecification": {
+            "PredefinedMetricType": "ASGAverageCPUUtilization"
+          },
+          "TargetValue": 50.0,
+          "DisableScaleIn": true
+        }
+      }
+    },
+    "BackendScalingPolicy": {
+      "Type": "AWS::AutoScaling::ScalingPolicy",
+      "Properties": {
+        "AutoScalingGroupName": { "Ref": "BackendASG" },
+        "PolicyType": "TargetTrackingScaling",
+        "TargetTrackingConfiguration": {
+          "PredefinedMetricSpecification": {
+            "PredefinedMetricType": "ASGAverageCPUUtilization"
+          },
+          "TargetValue": 50.0,
+          "DisableScaleIn": true
+        }
+      }
+    }
+    },
+    "Outputs": {
+      "VPCId": {
+        "Description": "VPC ID",
+        "Value": { "Ref": "VPC" }
+      },
+      "PrivateSubnet1Id": {
+        "Description": "Private Subnet 1 ID",
+        "Value": { "Ref": "PrivateSubnet1" }
+      },
+      "BackendSecurityGroupId": {
+        "Description": "ID of the security group for backend instance",
+        "Value": { "Ref": "BackendSecurityGroup" }
+      },
+      "BackendInstancePrivateIP": {
+        "Description": "Private IP of the backend EC2 instance",
+        "Value": {
+          "Fn::GetAtt": [ "BackendInstance", "PrivateIp" ]
+        }
+      },
+      "FrontendInstancePublicIP": {
+        "Description": "Public IP of the cloned frontend EC2 instance",
+        "Value": {
+          "Fn::GetAtt": ["FrontendInstance","PublicIp" ]
+        }
+      },
+      "RDSInstanceEndpoint": {
+        "Description": "The endpoint of the RDS instance",
+        "Value": {
+          "Fn::GetAtt": [
+            "RDSInstance",
+            "Endpoint.Address"
+          ]
+        }
+      },
+      "RDSInstancePort": {
+        "Description": "The port of the RDS instance",
+        "Value": {
+          "Fn::GetAtt": [
+            "RDSInstance",
+            "Endpoint.Port"
+          ]
+        }
+      }
+    }
+  }
+  

@@ -1,0 +1,268 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "FrontendLaunchTemplate": {
+      "Type": "AWS::EC2::LaunchTemplate",
+      "Properties": {
+        "LaunchTemplateName": "FrontendLaunchTemplate",
+        "LaunchTemplateData": {
+          "ImageId": { "Ref": "FrontendAMI" },
+          "InstanceType": "t3.micro",
+          "KeyName": { "Ref": "FrontendKey" },
+          "NetworkInterfaces": [
+            {
+              "AssociatePublicIpAddress": true,
+              "DeviceIndex": 0,
+              "Groups": [{ "Ref": "FrontendTemplateSG" }]
+            }
+          ]
+        }
+      }
+    },
+    "BackendLaunchTemplate": {
+      "Type": "AWS::EC2::LaunchTemplate",
+      "Properties": {
+        "LaunchTemplateName": "BackendLaunchTemplate",
+        "LaunchTemplateData": {
+          "ImageId": { "Ref": "BackendAMI" },
+          "InstanceType": "t3.micro",
+          "KeyName": { "Ref": "BackendKey" },
+          "NetworkInterfaces": [
+            {
+              "AssociatePublicIpAddress": false,
+              "DeviceIndex": 0,
+              "Groups": [{ "Ref": "BackendTemplateSG" }]
+            }
+          ]
+        }
+      }
+    },
+    "FrontendTargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": "FrontendTargetGroup",
+        "Protocol": "HTTP",
+        "Port": 80,
+        "VpcId": { "Ref": "VPCID" },
+        "TargetType": "instance",
+        "HealthCheckIntervalSeconds": 30,
+        "HealthCheckPath": "/"
+      }
+    },
+    "BackendTargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": "BackendTargetGroup",
+        "Protocol": "HTTP",
+        "Port": 8000,
+        "VpcId": { "Ref": "VPCID" },
+        "TargetType": "instance",
+        "HealthCheckIntervalSeconds": 30,
+        "HealthCheckPath": "/health"
+      }
+    },
+    "FrontendLoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Name": "FrontendALB",
+        "Subnets": [
+          { "Ref": "PublicSubnet1" },
+          { "Ref": "PublicSubnet2" }
+        ],
+        "SecurityGroups": [{ "Ref": "FrontendLoadBalancerSG" }],
+        "LoadBalancerAttributes": [
+          {
+            "Key": "idle_timeout.timeout_seconds",
+            "Value": "60"
+          }
+        ],
+        "Scheme": "internet-facing",
+        "Type": "application"
+      }
+    },
+    "BackendLoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Name": "BackendALB",
+        "Subnets": [
+          { "Ref": "PrivateSubnet1" },
+          { "Ref": "PrivateSubnet2" }
+        ],
+        "SecurityGroups": [{ "Ref": "BackendLoadBalancerSG" }],
+        "LoadBalancerAttributes": [
+          {
+            "Key": "idle_timeout.timeout_seconds",
+            "Value": "60"
+          }
+        ],
+        "Scheme": "internal",
+        "Type": "application"
+      }
+    },
+   "FrontendLoadBalancerListener": {
+  "Type": "AWS::ElasticLoadBalancingV2::Listener",
+  "Properties": {
+    "DefaultActions": [
+      {
+        "Type": "forward",
+        "TargetGroupArn": { "Ref": "FrontendTargetGroup" }
+      }
+    ],
+    "LoadBalancerArn": { "Ref": "FrontendLoadBalancer" },
+    "Port": 80,
+    "Protocol": "HTTP"
+  },
+  "DependsOn": "FrontendLoadBalancer"
+},
+    "BackendLoadBalancerListener": {
+  "Type": "AWS::ElasticLoadBalancingV2::Listener",
+  "Properties": {
+    "DefaultActions": [
+      {
+        "Type": "forward",
+        "TargetGroupArn": { "Ref": "BackendTargetGroup" }
+      }
+    ],
+    "LoadBalancerArn": { "Ref": "BackendLoadBalancer" },
+    "Port": 8000,
+    "Protocol": "HTTP"
+  },
+  "DependsOn": "BackendLoadBalancer"
+},
+    "FrontendASG": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AutoScalingGroupName": "FrontendASG",
+        "LaunchTemplate": {
+          "LaunchTemplateId": { "Ref": "FrontendLaunchTemplate" },
+          "Version": "1"
+        },
+        "MinSize": "1",
+        "MaxSize": "3",
+        "DesiredCapacity": "1",
+        "VPCZoneIdentifier": [
+          { "Ref": "PublicSubnet1" },
+          { "Ref": "PublicSubnet2" }
+        ],
+        "TargetGroupARNs": [{ "Ref": "FrontendTargetGroup" }],
+        "HealthCheckType": "ELB",
+        "HealthCheckGracePeriod": 300
+      }
+    },
+    "BackendASG": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AutoScalingGroupName": "BackendASG",
+        "LaunchTemplate": {
+          "LaunchTemplateId": { "Ref": "BackendLaunchTemplate" },
+          "Version": "1"
+        },
+        "MinSize": "1",
+        "MaxSize": "3",
+        "DesiredCapacity": "1",
+        "VPCZoneIdentifier": [
+          { "Ref": "PrivateSubnet1" },
+          { "Ref": "PrivateSubnet2" }
+        ],
+        "TargetGroupARNs": [{ "Ref": "BackendTargetGroup" }],
+        "HealthCheckType": "ELB",
+        "HealthCheckGracePeriod": 300
+      }
+    },
+    "FrontendScalingPolicy": {
+      "Type": "AWS::AutoScaling::ScalingPolicy",
+      "Properties": {
+        "AutoScalingGroupName": { "Ref": "FrontendASG" },
+        "PolicyType": "TargetTrackingScaling",
+        "TargetTrackingConfiguration": {
+          "PredefinedMetricSpecification": {
+            "PredefinedMetricType": "ASGAverageCPUUtilization"
+          },
+          "TargetValue": 50.0,
+          "DisableScaleIn": true
+        }
+      }
+    },
+    "BackendScalingPolicy": {
+      "Type": "AWS::AutoScaling::ScalingPolicy",
+      "Properties": {
+        "AutoScalingGroupName": { "Ref": "BackendASG" },
+        "PolicyType": "TargetTrackingScaling",
+        "TargetTrackingConfiguration": {
+          "PredefinedMetricSpecification": {
+            "PredefinedMetricType": "ASGAverageCPUUtilization"
+          },
+          "TargetValue": 50.0,
+          "DisableScaleIn": true
+        }
+      }
+    }
+  },
+  "Parameters": {
+    "FrontendAMI": {
+      "Type": "String",
+      "Description": "AMI ID for Frontend",
+      "Default": "ami-0c779fe4d45aced3d"
+    },
+    "BackendAMI": {
+      "Type": "String",
+      "Description": "AMI ID for Backend",
+      "Default": "ami-0da0f80017e7288a9"
+    },
+    "FrontendKey": {
+      "Type": "String",
+      "Description": "Key Pair Name for Frontend",
+      "Default": "fb-key-pair"
+    },
+    "BackendKey": {
+      "Type": "String",
+      "Description": "Key Pair Name for Backend",
+      "Default": "fb-key-pair"
+    },
+    "FrontendLoadBalancerSG": {
+      "Type": "String",
+      "Description": "Security Group ID for Frontend Load Balancer",
+      "Default": "sg-048be6e7148f54525"
+    },
+    "BackendLoadBalancerSG": {
+      "Type": "String",
+      "Description": "Security Group ID for Backend Load Balancer",
+      "Default": "sg-075112b1049efbb54"
+    },
+    "FrontendTemplateSG": {
+      "Type": "String",
+      "Description": "Security Group ID for Frontend Template",
+      "Default": "sg-02539c345b92a40f5"
+    },
+    "BackendTemplateSG": {
+      "Type": "String",
+      "Description": "Security Group ID for Backend Template",
+      "Default": "sg-06f330f59e9a2328c"
+    },
+    "VPCID": {
+      "Type": "String",
+      "Description": "VPC ID",
+      "Default": "vpc-03d6da2dcf6ad79bf"
+    },
+    "PublicSubnet1": {
+      "Type": "String",
+      "Description": "Public Subnet 1 ID",
+      "Default": "subnet-0d5640da8a93ba9c6"
+    },
+    "PublicSubnet2": {
+      "Type": "String",
+      "Description": "Public Subnet 2 ID",
+      "Default": "subnet-0279b4a40b24615d2"
+    },
+    "PrivateSubnet1": {
+      "Type": "String",
+      "Description": "Private Subnet 1 ID",
+      "Default": "subnet-092819e615dcba886"
+    },
+    "PrivateSubnet2": {
+      "Type": "String",
+      "Description": "Private Subnet 2 ID",
+      "Default": "subnet-02404f881531c7437"
+    }
+  }
+}
